@@ -144,6 +144,14 @@ export default function Break() {
               settings.skipBreakEnabled && !settings.immediatelyStartBreaks
             }
             timeSinceLastBreak={timeSinceLastBreak}
+            breakTitle={
+              activeBreak?.title ?? settings.breakSchedules[0]?.title ?? ""
+            }
+            breakLengthSeconds={
+              activeBreak?.lengthSeconds ??
+              settings.breakSchedules[0]?.lengthSeconds ??
+              0
+            }
             textColor={settings.textColor}
             backgroundColor={settings.backgroundColor}
           />

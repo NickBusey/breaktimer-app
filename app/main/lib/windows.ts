@@ -110,7 +110,7 @@ export function createBreakWindows(): void {
   const displays = screen.getAllDisplays();
   for (let windowIndex = 0; windowIndex < displays.length; windowIndex++) {
     const display = displays[windowIndex];
-    const notificationHeight = 80;
+    const notificationHeight = 96;
     const breakWindow = new BrowserWindow({
       show: false,
       autoHideMenuBar: true,

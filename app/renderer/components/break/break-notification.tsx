@@ -2,7 +2,7 @@ import { Button } from "@/components/ui/button";
 import { motion } from "framer-motion";
 import moment from "moment";
 import { useEffect, useState } from "react";
-import { formatTimeSinceLastBreak } from "./utils";
+import { formatBreakLength, formatTimeSinceLastBreak } from "./utils";
 
 const GRACE_PERIOD_MS = 60000;
 const TOTAL_COUNTDOWN_MS = 120000;
@@ -15,6 +15,8 @@ interface BreakNotificationProps {
   postponeBreakEnabled: boolean;
   skipBreakEnabled: boolean;
   timeSinceLastBreak: number | null;
+  breakTitle: string;
+  breakLengthSeconds: number;
   textColor: string;
   backgroundColor: string;
 }
@@ -27,6 +29,8 @@ export function BreakNotification({
   postponeBreakEnabled,
   skipBreakEnabled,
   timeSinceLastBreak,
+  breakTitle,
+  breakLengthSeconds,
   textColor,
   backgroundColor,
 }: BreakNotificationProps) {
@@ -69,6 +73,11 @@ export function BreakNotification({
     phase === "countdown"
       ? ((countdownDurationMs - msRemaining) / countdownDurationMs) * 100
       : 0;
+  const breakDetails = [
+    breakTitle.trim(),
+    breakLengthSeconds > 0 ? formatBreakLength(breakLengthSeconds) : "",
+    timeSinceLastBreak ? formatTimeSinceLastBreak(timeSinceLastBreak) : "",
+  ].filter(Boolean);
 
   return (
     <motion.div
@@ -94,8 +103,8 @@ export function BreakNotification({
           }}
         />
       )}
-      <div className="flex justify-between items-center px-6 py-2 h-full">
-        <div className="flex flex-col justify-center">
+      <div className="flex justify-between items-center gap-5 px-6 py-3 h-full">
+        <div className="flex min-w-0 flex-col justify-center">
           <h2
             className="text-lg font-semibold tracking-tight"
             style={{ color: textColor }}
@@ -104,17 +113,17 @@ export function BreakNotification({
               ? "Start your break when ready..."
               : `Break starting in ${secondsRemaining}s...`}
           </h2>
-          {timeSinceLastBreak && (
+          {breakDetails.length > 0 && (
             <p
-              className="text-sm opacity-80 font-medium"
+              className="max-w-[260px] truncate text-sm opacity-80 font-medium"
               style={{ color: textColor }}
             >
-              {formatTimeSinceLastBreak(timeSinceLastBreak)}
+              {breakDetails.join(" - ")}
             </p>
           )}
         </div>
 
-        <div className="flex justify-center gap-3 relative z-10">
+        <div className="flex shrink-0 justify-center gap-3 relative z-10">
           <div className="relative">
             <div
               className="absolute inset-0 rounded-md"
