@@ -1,18 +1,16 @@
 import { Tabs, TabsContent } from "@/components/ui/tabs";
 import { useEffect, useMemo, useState } from "react";
-import { BreakSchedule, NotificationType, Settings, SoundType } from "../../types/settings";
+import {
+  BreakSchedule,
+  NotificationType,
+  Settings,
+  SoundType,
+} from "../../types/settings";
 import { toast } from "../toaster";
-import AdvancedCard from "./settings/advanced-card";
-import AudioCard from "./settings/audio-card";
-import BackdropCard from "./settings/backdrop-card";
 import BreaksCard from "./settings/breaks-card";
 import SettingsCard from "./settings/settings-card";
 import SettingsHeader from "./settings/settings-header";
-import SkipCard from "./settings/skip-card";
-import SmartBreaksCard from "./settings/smart-breaks-card";
-import SnoozeCard from "./settings/snooze-card";
 import StartupCard from "./settings/startup-card";
-import ThemeCard from "./settings/theme-card";
 import WorkingHoursSettings from "./settings/working-hours";
 import WelcomeModal from "./welcome-modal";
 
@@ -41,70 +39,10 @@ export default function SettingsEl() {
     return null;
   }
 
-  const handleDateChange = (fieldName: string, newVal: Date): void => {
-    const seconds =
-      newVal.getHours() * 3600 + newVal.getMinutes() * 60 + newVal.getSeconds();
-
-    let secondsField: keyof Settings;
-    if (fieldName === "postponeLength") {
-      secondsField = "postponeLengthSeconds";
-    } else if (fieldName === "idleResetLength") {
-      secondsField = "idleResetLengthSeconds";
-    } else {
-      return;
-    }
-
-    setSettingsDraft({
-      ...settingsDraft,
-      [secondsField]: seconds,
-    });
-  };
-
-  const handlePostponeLimitChange = (value: string): void => {
-    const postponeLimit = Number(value);
-    setSettingsDraft({ ...settingsDraft, postponeLimit });
-  };
-
-  const handleTextChange = (
-    field: string,
-    e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>,
-  ): void => {
-    setSettingsDraft({
-      ...settingsDraft,
-      [field]: e.target.value,
-    });
-  };
-
   const handleSwitchChange = (field: string, checked: boolean): void => {
     setSettingsDraft({
       ...settingsDraft,
       [field]: checked,
-    });
-  };
-
-  const handleResetColors = (): void => {
-    setSettingsDraft({
-      ...settingsDraft,
-      textColor: "#ffffff",
-      backgroundColor: "#16a085",
-      backdropOpacity: 0.7,
-    });
-  };
-
-  const handleSliderChange = (
-    field: keyof Settings,
-    values: number[],
-  ): void => {
-    setSettingsDraft({
-      ...settingsDraft,
-      [field]: values[0],
-    });
-  };
-
-  const handleSoundTypeChange = (soundType: SoundType): void => {
-    setSettingsDraft({
-      ...settingsDraft,
-      soundType,
     });
   };
 
@@ -136,6 +74,22 @@ export default function SettingsEl() {
       message:
         fallbackSchedule?.message ??
         "Rest your eyes.\nStretch your legs.\nBreathe. Relax.",
+      idleResetEnabled: fallbackSchedule?.idleResetEnabled ?? true,
+      idleResetLengthSeconds:
+        fallbackSchedule?.idleResetLengthSeconds ?? 5 * 60,
+      idleResetNotification: fallbackSchedule?.idleResetNotification ?? false,
+      postponeBreakEnabled: fallbackSchedule?.postponeBreakEnabled ?? true,
+      postponeLengthSeconds: fallbackSchedule?.postponeLengthSeconds ?? 3 * 60,
+      postponeLimit: fallbackSchedule?.postponeLimit ?? 0,
+      skipBreakEnabled: fallbackSchedule?.skipBreakEnabled ?? false,
+      immediatelyStartBreaks: fallbackSchedule?.immediatelyStartBreaks ?? false,
+      endBreakEnabled: fallbackSchedule?.endBreakEnabled ?? true,
+      backgroundColor: fallbackSchedule?.backgroundColor ?? "#16a085",
+      textColor: fallbackSchedule?.textColor ?? "#ffffff",
+      soundType: fallbackSchedule?.soundType ?? SoundType.Gong,
+      breakSoundVolume: fallbackSchedule?.breakSoundVolume ?? 1,
+      showBackdrop: fallbackSchedule?.showBackdrop ?? true,
+      backdropOpacity: fallbackSchedule?.backdropOpacity ?? 0.7,
     };
 
     setSettingsDraft({
@@ -156,11 +110,6 @@ export default function SettingsEl() {
       ),
     });
   };
-
-  const hasPopupBreaks = settingsDraft.breakSchedules.some(
-    (schedule) =>
-      schedule.enabled && schedule.notificationType === NotificationType.Popup,
-  );
 
   const handleSave = async () => {
     await ipcRenderer.invokeSetSettings(settingsDraft);
@@ -184,30 +133,6 @@ export default function SettingsEl() {
               onScheduleRemove={handleScheduleRemove}
               onSwitchChange={handleSwitchChange}
             />
-
-            <SmartBreaksCard
-              settingsDraft={settingsDraft}
-              onSwitchChange={handleSwitchChange}
-              onDateChange={handleDateChange}
-            />
-
-            <SnoozeCard
-              settingsDraft={settingsDraft}
-              onSwitchChange={handleSwitchChange}
-              onDateChange={handleDateChange}
-              onPostponeLimitChange={handlePostponeLimitChange}
-            />
-
-            <SkipCard
-              settingsDraft={settingsDraft}
-              onSwitchChange={handleSwitchChange}
-            />
-
-            <AdvancedCard
-              settingsDraft={settingsDraft}
-              onSwitchChange={handleSwitchChange}
-              hasPopupBreaks={hasPopupBreaks}
-            />
           </TabsContent>
 
           <TabsContent value="working-hours" className="m-0 space-y-6">
@@ -226,27 +151,6 @@ export default function SettingsEl() {
                 setSettingsDraft={setSettingsDraft}
               />
             </SettingsCard>
-          </TabsContent>
-
-          <TabsContent value="customization" className="m-0 space-y-8">
-            <ThemeCard
-              settingsDraft={settingsDraft}
-              onTextChange={handleTextChange}
-              onResetColors={handleResetColors}
-            />
-
-            <AudioCard
-              settingsDraft={settingsDraft}
-              onSoundTypeChange={handleSoundTypeChange}
-              onSliderChange={handleSliderChange}
-            />
-
-            <BackdropCard
-              settingsDraft={settingsDraft}
-              onSwitchChange={handleSwitchChange}
-              onSliderChange={handleSliderChange}
-              hasPopupBreaks={hasPopupBreaks}
-            />
           </TabsContent>
 
           {processEnv.SNAP === undefined && (

@@ -144,14 +144,124 @@ const migrations: Migration[] = [
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     migrate: (settings: any) => {
       if (Array.isArray(settings.breakSchedules)) {
-        settings.breakSchedules = settings.breakSchedules.map((schedule: any) => ({
-          ...schedule,
-          notificationType:
-            schedule.notificationType ??
-            settings.notificationType ??
-            defaultSettings.breakSchedules[0].notificationType,
-        }));
+        settings.breakSchedules = settings.breakSchedules.map(
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          (schedule: any) => ({
+            ...schedule,
+            notificationType:
+              schedule.notificationType ??
+              settings.notificationType ??
+              defaultSettings.breakSchedules[0].notificationType,
+          }),
+        );
       }
+
+      return settings;
+    },
+  },
+  {
+    version: 5,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    migrate: (settings: any) => {
+      const def = defaultSettings.breakSchedules[0];
+      if (Array.isArray(settings.breakSchedules)) {
+        settings.breakSchedules = settings.breakSchedules.map(
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          (schedule: any) => ({
+            ...schedule,
+            idleResetEnabled:
+              schedule.idleResetEnabled ??
+              settings.idleResetEnabled ??
+              def.idleResetEnabled,
+            idleResetLengthSeconds:
+              schedule.idleResetLengthSeconds ??
+              settings.idleResetLengthSeconds ??
+              def.idleResetLengthSeconds,
+            idleResetNotification:
+              schedule.idleResetNotification ??
+              settings.idleResetNotification ??
+              def.idleResetNotification,
+            postponeBreakEnabled:
+              schedule.postponeBreakEnabled ??
+              settings.postponeBreakEnabled ??
+              def.postponeBreakEnabled,
+            postponeLengthSeconds:
+              schedule.postponeLengthSeconds ??
+              settings.postponeLengthSeconds ??
+              def.postponeLengthSeconds,
+            postponeLimit:
+              schedule.postponeLimit ??
+              settings.postponeLimit ??
+              def.postponeLimit,
+            skipBreakEnabled:
+              schedule.skipBreakEnabled ??
+              settings.skipBreakEnabled ??
+              def.skipBreakEnabled,
+            immediatelyStartBreaks:
+              schedule.immediatelyStartBreaks ??
+              settings.immediatelyStartBreaks ??
+              def.immediatelyStartBreaks,
+            endBreakEnabled:
+              schedule.endBreakEnabled ??
+              settings.endBreakEnabled ??
+              def.endBreakEnabled,
+          }),
+        );
+      }
+
+      delete settings.idleResetEnabled;
+      delete settings.idleResetLengthSeconds;
+      delete settings.idleResetNotification;
+      delete settings.postponeBreakEnabled;
+      delete settings.postponeLengthSeconds;
+      delete settings.postponeLimit;
+      delete settings.skipBreakEnabled;
+      delete settings.immediatelyStartBreaks;
+      delete settings.endBreakEnabled;
+
+      return settings;
+    },
+  },
+  {
+    version: 6,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    migrate: (settings: any) => {
+      const def = defaultSettings.breakSchedules[0];
+      if (Array.isArray(settings.breakSchedules)) {
+        settings.breakSchedules = settings.breakSchedules.map(
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          (schedule: any) => ({
+            ...schedule,
+            backgroundColor:
+              schedule.backgroundColor ??
+              settings.backgroundColor ??
+              def.backgroundColor,
+            textColor:
+              schedule.textColor ?? settings.textColor ?? def.textColor,
+            soundType:
+              schedule.soundType ?? settings.soundType ?? def.soundType,
+            breakSoundVolume:
+              schedule.breakSoundVolume ??
+              settings.breakSoundVolume ??
+              def.breakSoundVolume,
+            showBackdrop:
+              schedule.showBackdrop ??
+              settings.showBackdrop ??
+              def.showBackdrop,
+            backdropOpacity:
+              schedule.backdropOpacity ??
+              settings.backdropOpacity ??
+              def.backdropOpacity,
+          }),
+        );
+      }
+
+      delete settings.backgroundColor;
+      delete settings.textColor;
+      delete settings.soundType;
+      delete settings.breakSoundVolume;
+      delete settings.showBackdrop;
+      delete settings.backdropOpacity;
 
       return settings;
     },

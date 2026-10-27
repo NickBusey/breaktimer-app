@@ -21,7 +21,10 @@ declare const ipcRenderer: {
     cb: (type: string, volume?: number) => void,
   ) => Promise<void>;
   onBreakStart: (
-    cb: (payload: { breakEndTime: number; activeBreak: unknown | null }) => void,
+    cb: (payload: {
+      breakEndTime: number;
+      activeBreak: unknown | null;
+    }) => void,
   ) => void;
   onBreakEnd: (cb: () => void) => void;
 };

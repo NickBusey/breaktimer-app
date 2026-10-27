@@ -30,6 +30,28 @@ export interface BreakSchedule {
   lengthSeconds: number;
   title: string;
   message: string;
+  // Smart breaks
+  idleResetEnabled: boolean;
+  idleResetLengthSeconds: number;
+  idleResetNotification: boolean;
+  // Snooze
+  postponeBreakEnabled: boolean;
+  postponeLengthSeconds: number;
+  postponeLimit: number;
+  // Skip
+  skipBreakEnabled: boolean;
+  // Advanced
+  immediatelyStartBreaks: boolean;
+  endBreakEnabled: boolean;
+  // Theme
+  backgroundColor: string;
+  textColor: string;
+  // Audio
+  soundType: SoundType;
+  breakSoundVolume: number;
+  // Backdrop
+  showBackdrop: boolean;
+  backdropOpacity: number;
 }
 
 export interface Settings {
@@ -37,8 +59,6 @@ export interface Settings {
   breaksEnabled: boolean;
   notificationType: NotificationType;
   breakSchedules: BreakSchedule[];
-  postponeLengthSeconds: number;
-  postponeLimit: number;
   workingHoursEnabled: boolean;
   workingHoursMonday: WorkingHours;
   workingHoursTuesday: WorkingHours;
@@ -47,19 +67,6 @@ export interface Settings {
   workingHoursFriday: WorkingHours;
   workingHoursSaturday: WorkingHours;
   workingHoursSunday: WorkingHours;
-  idleResetEnabled: boolean;
-  idleResetLengthSeconds: number;
-  idleResetNotification: boolean;
-  soundType: SoundType;
-  breakSoundVolume: number;
-  backgroundColor: string;
-  textColor: string;
-  showBackdrop: boolean;
-  backdropOpacity: number;
-  endBreakEnabled: boolean;
-  skipBreakEnabled: boolean;
-  postponeBreakEnabled: boolean;
-  immediatelyStartBreaks: boolean;
 }
 
 export const defaultWorkingRange: WorkingHoursRange = {
@@ -80,10 +87,23 @@ export const defaultSettings: Settings = {
       lengthSeconds: 2 * 60,
       title: "Time for a break.",
       message: "Rest your eyes.\nStretch your legs.\nBreathe. Relax.",
+      idleResetEnabled: true,
+      idleResetLengthSeconds: 5 * 60,
+      idleResetNotification: false,
+      postponeBreakEnabled: true,
+      postponeLengthSeconds: 3 * 60,
+      postponeLimit: 0,
+      skipBreakEnabled: false,
+      immediatelyStartBreaks: false,
+      endBreakEnabled: true,
+      backgroundColor: "#16a085",
+      textColor: "#ffffff",
+      soundType: SoundType.Gong,
+      breakSoundVolume: 1,
+      showBackdrop: true,
+      backdropOpacity: 0.7,
     },
   ],
-  postponeLengthSeconds: 3 * 60,
-  postponeLimit: 0,
   workingHoursEnabled: true,
   workingHoursMonday: {
     enabled: true,
@@ -113,19 +133,6 @@ export const defaultSettings: Settings = {
     enabled: false,
     ranges: [defaultWorkingRange],
   },
-  idleResetEnabled: true,
-  idleResetLengthSeconds: 5 * 60,
-  idleResetNotification: false,
-  soundType: SoundType.Gong,
-  breakSoundVolume: 1,
-  backgroundColor: "#16a085",
-  textColor: "#ffffff",
-  showBackdrop: true,
-  backdropOpacity: 0.7,
-  endBreakEnabled: true,
-  skipBreakEnabled: false,
-  postponeBreakEnabled: true,
-  immediatelyStartBreaks: false,
 };
 
 export interface DayConfig {

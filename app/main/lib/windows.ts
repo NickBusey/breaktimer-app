@@ -1,7 +1,7 @@
 import { app, BrowserWindow, screen } from "electron";
 import log from "electron-log";
 import path from "path";
-import { endPopupBreak } from "./breaks";
+import { endPopupBreak, getActiveBreak } from "./breaks";
 import { getSettings } from "./store";
 
 let settingsWindow: BrowserWindow | null = null;
@@ -54,22 +54,12 @@ export function createSettingsWindow(): void {
         ? path.join(__dirname, "../../../resources/tray/icon.png")
         : path.join(process.resourcesPath, "app/resources/tray/icon.png"),
     webPreferences: {
-      devTools: true,
+      devTools: false,
       preload: path.join(__dirname, "../../renderer/preload.js"),
     },
   });
 
   settingsWindow.loadURL(getBrowserWindowUrl("settings"));
-
-  // Force enable devtools keyboard shortcuts
-  settingsWindow.webContents.on("before-input-event", (event, input) => {
-    if (
-      input.key === "F12" ||
-      (input.control && input.shift && input.key === "I")
-    ) {
-      settingsWindow?.webContents.toggleDevTools();
-    }
-  });
 
   settingsWindow.on("ready-to-show", () => {
     if (!settingsWindow) {
@@ -99,10 +89,16 @@ export function createSoundsWindow(): void {
 
 export function createBreakWindows(): void {
   const settings = getSettings();
+  const activeBreak = getActiveBreak();
+  const schedule = activeBreak
+    ? settings.breakSchedules.find((s) => s.id === activeBreak.scheduleId)
+    : undefined;
 
   let buttonCount = 1;
-  if (settings.postponeBreakEnabled) buttonCount++;
-  if (settings.skipBreakEnabled) buttonCount++;
+  if (schedule?.postponeBreakEnabled && !schedule.immediatelyStartBreaks)
+    buttonCount++;
+  if (schedule?.skipBreakEnabled && !schedule.immediatelyStartBreaks)
+    buttonCount++;
 
   const notificationWidth =
     450 + (buttonCount - 1) * 50 + (buttonCount === 3 ? 20 : 0);
@@ -124,7 +120,7 @@ export function createBreakWindows(): void {
       transparent: true,
       hasShadow: false,
       webPreferences: {
-        devTools: true,
+        devTools: false,
         preload: path.join(__dirname, "../../renderer/preload.js"),
       },
     });

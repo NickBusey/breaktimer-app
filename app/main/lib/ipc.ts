@@ -107,8 +107,14 @@ ipcMain.handle(
     if (window) {
       const display = screen.getDisplayNearestPoint(window.getBounds());
       const settings = getSettings();
+      const activeBreak = getActiveBreak();
+      const schedule = activeBreak
+        ? settings.breakSchedules.find((s) => s.id === activeBreak.scheduleId)
+        : undefined;
+      const showBackdrop =
+        schedule?.showBackdrop ?? settings.breakSchedules[0]?.showBackdrop;
 
-      if (settings.showBackdrop) {
+      if (showBackdrop) {
         // Fullscreen for backdrop mode
         window.setSize(display.bounds.width, display.bounds.height);
         window.setPosition(display.bounds.x, display.bounds.y);

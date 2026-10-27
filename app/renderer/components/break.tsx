@@ -1,7 +1,7 @@
 import { motion } from "framer-motion";
 import { useCallback, useEffect, useState } from "react";
 import { ActiveBreak } from "../../types/breaks";
-import { Settings, SoundType } from "../../types/settings";
+import { NotificationType, Settings, SoundType } from "../../types/settings";
 import { BreakNotification } from "./break/break-notification";
 import { BreakProgress } from "./break/break-progress";
 import { createDarkerRgba } from "./break/utils";
@@ -37,7 +37,10 @@ export default function Break() {
       setActiveBreak(activeBreak);
 
       // Skip the countdown if immediately start breaks is enabled or started from tray
-      if (settings.immediatelyStartBreaks || startedFromTray) {
+      const activeSchedule = activeBreak
+        ? settings.breakSchedules.find((s) => s.id === activeBreak.scheduleId)
+        : undefined;
+      if (activeSchedule?.immediatelyStartBreaks || startedFromTray) {
         setCountingDown(false);
       }
 
@@ -47,10 +50,10 @@ export default function Break() {
     // Listen for break start broadcasts from other windows
     const handleBreakStart = (payload: {
       breakEndTime: number;
-      activeBreak: ActiveBreak | null;
+      activeBreak: unknown;
     }) => {
       setSharedBreakEndTime(payload.breakEndTime);
-      setActiveBreak(payload.activeBreak);
+      setActiveBreak(payload.activeBreak as ActiveBreak | null);
       setCountingDown(false);
     };
 
@@ -111,17 +114,47 @@ export default function Break() {
     const windowId = urlParams.get("windowId");
     const isPrimary = windowId === "0" || windowId === null;
 
-    if (isPrimary && settings && settings?.soundType !== SoundType.None) {
-      ipcRenderer.invokeEndSound(settings.soundType, settings.breakSoundVolume);
+    const schedule =
+      settings && activeBreak
+        ? settings.breakSchedules.find((s) => s.id === activeBreak.scheduleId)
+        : undefined;
+    const breakSchedule =
+      schedule ??
+      (settings
+        ? (settings.breakSchedules.find(
+            (s) => s.notificationType === NotificationType.Popup,
+          ) ?? settings.breakSchedules[0])
+        : undefined);
+
+    if (
+      isPrimary &&
+      settings &&
+      breakSchedule &&
+      breakSchedule.soundType !== SoundType.None
+    ) {
+      ipcRenderer.invokeEndSound(
+        breakSchedule.soundType,
+        breakSchedule.breakSoundVolume,
+      );
     }
 
     // Broadcast to all windows to start their closing animations
     await ipcRenderer.invokeBreakEnd();
-  }, [settings]);
+  }, [settings, activeBreak]);
 
   if (settings === null || allowPostpone === null) {
     return null;
   }
+
+  const activeSchedule = activeBreak
+    ? settings.breakSchedules.find((s) => s.id === activeBreak.scheduleId)
+    : undefined;
+  const scheduleForBreak =
+    activeSchedule ??
+    settings.breakSchedules.find(
+      (s) => s.notificationType === NotificationType.Popup,
+    ) ??
+    settings.breakSchedules[0];
 
   if (countingDown) {
     return (
@@ -136,24 +169,19 @@ export default function Break() {
             onSkipBreak={handleSkipBreak}
             onStartBreakNow={handleStartBreakNow}
             postponeBreakEnabled={
-              settings.postponeBreakEnabled &&
+              !!activeSchedule?.postponeBreakEnabled &&
               allowPostpone &&
-              !settings.immediatelyStartBreaks
+              !activeSchedule?.immediatelyStartBreaks
             }
             skipBreakEnabled={
-              settings.skipBreakEnabled && !settings.immediatelyStartBreaks
+              !!activeSchedule?.skipBreakEnabled &&
+              !activeSchedule?.immediatelyStartBreaks
             }
             timeSinceLastBreak={timeSinceLastBreak}
-            breakTitle={
-              activeBreak?.title ?? settings.breakSchedules[0]?.title ?? ""
-            }
-            breakLengthSeconds={
-              activeBreak?.lengthSeconds ??
-              settings.breakSchedules[0]?.lengthSeconds ??
-              0
-            }
-            textColor={settings.textColor}
-            backgroundColor={settings.backgroundColor}
+            breakTitle={scheduleForBreak.title}
+            breakLengthSeconds={scheduleForBreak.lengthSeconds}
+            textColor={scheduleForBreak.textColor}
+            backgroundColor={scheduleForBreak.backgroundColor}
           />
         )}
       </div>
@@ -162,11 +190,11 @@ export default function Break() {
 
   return (
     <div className="h-full flex items-center justify-center relative">
-      {settings.showBackdrop && (
+      {scheduleForBreak.showBackdrop && (
         <motion.div
           className="absolute inset-0"
           animate={{
-            opacity: closing ? 0 : settings.backdropOpacity,
+            opacity: closing ? 0 : scheduleForBreak.backdropOpacity,
           }}
           initial={{ opacity: 0 }}
           transition={{
@@ -174,7 +202,10 @@ export default function Break() {
             delay: closing ? 0.3 : 0,
           }}
           style={{
-            backgroundColor: createDarkerRgba(settings.backgroundColor, 1),
+            backgroundColor: createDarkerRgba(
+              scheduleForBreak.backgroundColor,
+              1,
+            ),
           }}
         />
       )}
@@ -190,29 +221,20 @@ export default function Break() {
           ease: [0.25, 0.46, 0.45, 0.94], // easeOutQuart
         }}
         style={{
-          color: settings.textColor,
-          backgroundColor: settings.backgroundColor,
+          color: scheduleForBreak.textColor,
+          backgroundColor: scheduleForBreak.backgroundColor,
         }}
       >
         {ready && (
           <BreakProgress
-            breakMessage={
-              activeBreak?.message ??
-              settings.breakSchedules[0]?.message ??
-              ""
-            }
-            breakTitle={
-              activeBreak?.title ?? settings.breakSchedules[0]?.title ?? ""
-            }
-            breakLengthSeconds={
-              activeBreak?.lengthSeconds ??
-              settings.breakSchedules[0]?.lengthSeconds ??
-              0
-            }
-            endBreakEnabled={settings.endBreakEnabled}
+            breakMessage={scheduleForBreak.message}
+            breakTitle={scheduleForBreak.title}
+            breakLengthSeconds={scheduleForBreak.lengthSeconds}
+            endBreakEnabled={!!activeSchedule?.endBreakEnabled}
             onEndBreak={handleEndBreak}
-            settings={settings}
-            textColor={settings.textColor}
+            soundType={scheduleForBreak.soundType}
+            breakSoundVolume={scheduleForBreak.breakSoundVolume}
+            textColor={scheduleForBreak.textColor}
             isClosing={closing}
             sharedBreakEndTime={sharedBreakEndTime}
           />

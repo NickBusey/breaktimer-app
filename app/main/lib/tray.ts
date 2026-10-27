@@ -7,8 +7,8 @@ import { Settings } from "../../types/settings";
 import {
   checkIdle,
   checkInWorkingHours,
+  getAllBreakTimes,
   getBreakTime,
-  getNextBreakInfo,
   isHavingBreak,
   startBreakNow,
 } from "./breaks";
@@ -156,43 +156,43 @@ export function buildTray(): void {
   };
 
   const breakTime = getBreakTime();
-  const nextBreakInfo = getNextBreakInfo();
   const enabledSchedules = settings.breakSchedules.filter(
     (schedule) => schedule.enabled,
   );
   const inWorkingHours = checkInWorkingHours();
   const idle = checkIdle();
   const havingBreak = isHavingBreak();
-  const minsLeft = breakTime?.diff(moment(), "minutes");
 
-  let nextBreak = "";
+  const allBreakTimes = getAllBreakTimes().sort(
+    (a, b) => a.time.valueOf() - b.time.valueOf(),
+  );
 
-  if (minsLeft !== undefined && nextBreakInfo) {
-    const scheduleLabel = getScheduleLabel(
-      enabledSchedules,
-      nextBreakInfo.schedule.id,
-    );
+  const formatMinsLeft = (time: moment.Moment): string => {
+    const minsLeft = time.diff(moment(), "minutes");
     if (minsLeft > 1) {
-      nextBreak = `Next "${scheduleLabel}" in ${minsLeft} minutes`;
+      return `in ${minsLeft} minutes`;
     } else if (minsLeft === 1) {
-      nextBreak = `Next "${scheduleLabel}" in 1 minute`;
+      return `in 1 minute`;
     } else {
-      nextBreak = `Next "${scheduleLabel}" in less than a minute`;
+      return `in less than a minute`;
     }
-  }
+  };
+
+  const showTimerItems = breaksEnabled && inWorkingHours && !havingBreak;
+
+  const timerItems = allBreakTimes.map(({ schedule, time }) => {
+    const scheduleLabel = getScheduleLabel(enabledSchedules, schedule.id);
+    return {
+      label: `"${scheduleLabel}" ${formatMinsLeft(time)}`,
+      enabled: false,
+      visible: showTimerItems,
+    };
+  });
 
   const disableEndTime = getDisableEndTime();
 
   const contextMenu = Menu.buildFromTemplate([
-    {
-      label: nextBreak,
-      visible:
-        breakTime !== null &&
-        inWorkingHours &&
-        settings.breaksEnabled &&
-        !havingBreak,
-      enabled: false,
-    },
+    ...timerItems,
     {
       label: `Disabled for ${getDisableTimeRemaining()}`,
       visible: disableEndTime !== null && !breaksEnabled,
@@ -250,9 +250,7 @@ export function buildTray(): void {
       submenu: enabledSchedules.map((schedule) => ({
         label: getScheduleLabel(enabledSchedules, schedule.id),
         click: () => {
-          log.info(
-            `Start break now selected [scheduleId=${schedule.id}]`,
-          );
+          log.info(`Start break now selected [scheduleId=${schedule.id}]`);
           startBreakNow(schedule.id);
         },
       })),

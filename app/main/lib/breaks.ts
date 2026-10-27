@@ -6,6 +6,7 @@ import { IpcChannel } from "../../types/ipc";
 import {
   BreakSchedule,
   DayConfig,
+  defaultSettings,
   NotificationType,
   Settings,
   SoundType,
@@ -30,6 +31,7 @@ let breakTimes: Record<string, BreakTime> = {};
 let havingBreak = false;
 let postponedCount = 0;
 let idleStart: Date | null = null;
+let idleScheduleId: string | null = null;
 let lockStart: Date | null = null;
 let lastTick: Date | null = null;
 let startedFromTray = false;
@@ -143,6 +145,24 @@ function getNextBreakTime(): BreakTime {
   return next ? next.time : null;
 }
 
+export function getAllBreakTimes(): {
+  schedule: BreakSchedule;
+  time: moment.Moment;
+}[] {
+  const settings: Settings = getSettings();
+  const schedules = getEnabledSchedules(settings);
+  const result: { schedule: BreakSchedule; time: moment.Moment }[] = [];
+
+  for (const schedule of schedules) {
+    const time = breakTimes[schedule.id];
+    if (time) {
+      result.push({ schedule, time });
+    }
+  }
+
+  return result;
+}
+
 function scheduleAllNextBreaks(fromTime?: moment.Moment): void {
   const settings: Settings = getSettings();
   const schedules = getEnabledSchedules(settings);
@@ -192,9 +212,21 @@ function ensureScheduledBreaks(): void {
   }
 }
 
-function getIdleResetSeconds(): number {
+function getRelevantSchedule(): BreakSchedule | undefined {
+  const next = getNextBreakInfo();
+  if (next) {
+    return next.schedule;
+  }
   const settings: Settings = getSettings();
-  return getSecondsFromSettings(settings.idleResetLengthSeconds);
+  return getEnabledSchedules(settings)[0];
+}
+
+function getIdleResetSeconds(schedule?: BreakSchedule): number {
+  const relevant = schedule ?? getRelevantSchedule();
+  return getSecondsFromSettings(
+    relevant?.idleResetLengthSeconds ??
+      defaultSettings.breakSchedules[0].idleResetLengthSeconds,
+  );
 }
 
 function getBreakSeconds(): number {
@@ -210,10 +242,8 @@ function getBreakSeconds(): number {
   return getSecondsFromSettings(minFrequency);
 }
 
-function createIdleNotification() {
-  const settings: Settings = getSettings();
-
-  if (!settings.idleResetEnabled || idleStart === null) {
+function createIdleNotification(schedule: BreakSchedule) {
+  if (!schedule.idleResetEnabled || idleStart === null) {
     return;
   }
 
@@ -231,7 +261,7 @@ function createIdleNotification() {
     idleMinutes -= idleHours * 60;
   }
 
-  if (settings.idleResetNotification) {
+  if (schedule.idleResetNotification) {
     showNotification(
       "Break automatically detected",
       `Away for ${zeroPad(idleHours)}:${zeroPad(idleMinutes)}:${zeroPad(
@@ -254,8 +284,12 @@ export function scheduleNextBreak(
   }
 
   if (idleStart) {
-    createIdleNotification();
+    const idleSchedule = idleScheduleId
+      ? getScheduleById(settings, idleScheduleId)
+      : undefined;
+    createIdleNotification(idleSchedule ?? schedule);
     idleStart = null;
+    idleScheduleId = null;
     postponedCount = 0;
 
     lastCompletedBreakTime = new Date();
@@ -264,14 +298,14 @@ export function scheduleNextBreak(
   }
 
   const seconds = options.isPostpone
-    ? settings.postponeLengthSeconds
+    ? schedule.postponeLengthSeconds
     : schedule.frequencySeconds;
 
   const baseTime = options.fromTime ?? moment();
   breakTimes[schedule.id] = baseTime.clone().add(seconds, "seconds");
 
   log.info(
-    `Scheduling next break [scheduleId=${schedule.id}] [isPostpone=${options.isPostpone ?? false}] [seconds=${seconds}] [postponeLength=${settings.postponeLengthSeconds}] [frequency=${schedule.frequencySeconds}] [scheduledFor=${breakTimes[schedule.id]?.format("HH:mm:ss")}]`,
+    `Scheduling next break [scheduleId=${schedule.id}] [isPostpone=${options.isPostpone ?? false}] [seconds=${seconds}] [postponeLength=${schedule.postponeLengthSeconds}] [frequency=${schedule.frequencySeconds}] [scheduledFor=${breakTimes[schedule.id]?.format("HH:mm:ss")}]`,
   );
 
   buildTray();
@@ -310,7 +344,10 @@ export function endPopupBreak(): void {
 
 export function getAllowPostpone(): boolean {
   const settings = getSettings();
-  return !settings.postponeLimit || postponedCount < settings.postponeLimit;
+  const schedule = activeBreak
+    ? getScheduleById(settings, activeBreak.scheduleId)
+    : undefined;
+  return !schedule?.postponeLimit || postponedCount < schedule.postponeLimit;
 }
 
 export function postponeBreak(action = "snoozed"): void {
@@ -363,11 +400,11 @@ function doBreak(scheduleId: string): void {
 
   if (schedule.notificationType === NotificationType.Notification) {
     showNotification(schedule.title, stripHtml(schedule.message));
-    if (settings.soundType !== SoundType.None) {
+    if (schedule.soundType !== SoundType.None) {
       sendIpc(
         IpcChannel.SoundStartPlay,
-        settings.soundType,
-        settings.breakSoundVolume,
+        schedule.soundType,
+        schedule.breakSoundVolume,
       );
     }
     havingBreak = false;
@@ -423,10 +460,11 @@ enum IdleState {
 }
 
 export function checkIdle(): boolean {
-  const settings: Settings = getSettings();
+  const relevant = getRelevantSchedule();
+  const idleResetSeconds = getIdleResetSeconds(relevant);
 
   const state: IdleState = powerMonitor.getSystemIdleState(
-    getIdleResetSeconds(),
+    idleResetSeconds,
   ) as IdleState;
 
   if (state === IdleState.Locked) {
@@ -437,13 +475,13 @@ export function checkIdle(): boolean {
       const lockSeconds = Number(
         ((+new Date() - +lockStart) / 1000).toFixed(0),
       );
-      return lockSeconds > getIdleResetSeconds();
+      return lockSeconds > idleResetSeconds;
     }
   }
 
   lockStart = null;
 
-  if (!settings.idleResetEnabled) {
+  if (!relevant?.idleResetEnabled) {
     return false;
   }
 
@@ -514,6 +552,7 @@ function tick(): void {
       // case, it's not particularly helpful to show an idle reset
       // notification, so unset idle start
       idleStart = null;
+      idleScheduleId = null;
       lockStart = null;
     } else if (secondsSinceLastTick > breakSeconds) {
       // The computer has been slept for longer than the break period. In this
@@ -529,12 +568,15 @@ function tick(): void {
         lockStart = null;
         idleStart = lastTick;
       }
+      idleScheduleId ??= getRelevantSchedule()?.id ?? null;
       scheduleAllNextBreaks();
     }
 
     if (!shouldHaveBreak && !havingBreak && hasScheduledBreaks()) {
       if (checkIdle()) {
-        const idleResetSeconds = getIdleResetSeconds();
+        const relevant = getRelevantSchedule();
+        const idleResetSeconds = getIdleResetSeconds(relevant);
+        idleScheduleId = relevant?.id ?? null;
         // Calculate when idle actually started by subtracting idle duration
         idleStart = new Date(Date.now() - idleResetSeconds * 1000);
       }

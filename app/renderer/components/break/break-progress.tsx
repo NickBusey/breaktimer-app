@@ -2,7 +2,7 @@ import { Button } from "@/components/ui/button";
 import { motion } from "framer-motion";
 import moment from "moment";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Settings, SoundType } from "../../../types/settings";
+import { SoundType } from "../../../types/settings";
 import { TimeRemaining } from "./utils";
 
 interface BreakProgressProps {
@@ -11,7 +11,8 @@ interface BreakProgressProps {
   breakLengthSeconds: number;
   endBreakEnabled: boolean;
   onEndBreak: () => void;
-  settings: Settings;
+  soundType: SoundType;
+  breakSoundVolume: number;
   textColor: string;
   isClosing?: boolean;
   sharedBreakEndTime?: number | null;
@@ -23,7 +24,8 @@ export function BreakProgress({
   breakLengthSeconds,
   endBreakEnabled,
   onEndBreak,
-  settings,
+  soundType,
+  breakSoundVolume,
   textColor,
   isClosing = false,
   sharedBreakEndTime = null,
@@ -49,14 +51,11 @@ export function BreakProgress({
     // Only play start sound from primary window and only once per break
     if (
       isPrimaryWindow &&
-      settings.soundType !== SoundType.None &&
+      soundType !== SoundType.None &&
       !soundPlayedRef.current
     ) {
       soundPlayedRef.current = true;
-      ipcRenderer.invokeStartSound(
-        settings.soundType,
-        settings.breakSoundVolume,
-      );
+      ipcRenderer.invokeStartSound(soundType, breakSoundVolume);
     }
 
     (() => {
@@ -109,7 +108,8 @@ export function BreakProgress({
     };
   }, [
     onEndBreak,
-    settings,
+    soundType,
+    breakSoundVolume,
     breakStartTime,
     isPrimaryWindow,
     sharedBreakEndTime,
