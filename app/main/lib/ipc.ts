@@ -12,6 +12,7 @@ import {
   getTimeSinceLastBreak,
   postponeBreak,
   recordBreakOutcome,
+  startBreakTracking,
   wasStartedFromTray,
 } from "./breaks";
 import { getCalendarList, getRecentCalendarMeetings } from "./calendar";
@@ -22,6 +23,7 @@ import {
   getAppInitialized,
   setAppInitialized,
 } from "./store";
+import { buildTray } from "./tray";
 import { getWindows } from "./windows";
 
 export function sendIpc(channel: IpcChannel, ...args: unknown[]): void {
@@ -58,6 +60,7 @@ ipcMain.handle(
 
 ipcMain.handle(IpcChannel.BreakStart, (): void => {
   log.info(IpcChannel.BreakStart);
+  startBreakTracking();
   // Send break end time so all windows sync their progress to the same timeline
   const breakLengthMs = getBreakLengthSeconds() * 1000;
   const breakEndTime = Date.now() + breakLengthMs;
@@ -138,6 +141,7 @@ ipcMain.handle(
   (_event: IpcMainInvokeEvent, settings: Settings): void => {
     log.info(IpcChannel.SettingsSet);
     setSettings(settings);
+    buildTray();
   },
 );
 

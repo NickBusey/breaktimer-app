@@ -54,9 +54,16 @@ export interface BreakSchedule {
   backdropOpacity: number;
 }
 
+export enum TrayTextMode {
+  TimeToNextBreak = "TIME_TO_NEXT_BREAK",
+  TimeSinceLastBreak = "TIME_SINCE_LAST_BREAK",
+}
+
 export interface Settings {
   autoLaunch: boolean;
   breaksEnabled: boolean;
+  trayTextEnabled: boolean;
+  trayTextMode: TrayTextMode;
   notificationType: NotificationType;
   breakSchedules: BreakSchedule[];
   pauseDuringMeetings: boolean;
@@ -79,6 +86,8 @@ export const defaultWorkingRange: WorkingHoursRange = {
 export const defaultSettings: Settings = {
   autoLaunch: true,
   breaksEnabled: true,
+  trayTextEnabled: true,
+  trayTextMode: TrayTextMode.TimeToNextBreak,
   notificationType: NotificationType.Popup,
   pauseDuringMeetings: true,
   excludedCalendarIds: [],

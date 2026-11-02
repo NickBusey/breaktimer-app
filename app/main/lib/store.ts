@@ -2,7 +2,7 @@ import Store from "electron-store";
 import { BreakEvent, BreakEventType } from "../../types/breaks";
 import { defaultSettings, Settings } from "../../types/settings";
 import { setAutoLauch } from "./auto-launch";
-import { initBreaks } from "./breaks";
+import { initBreaks, resetTimeSinceLastBreak } from "./breaks";
 
 // The popup sparkline reads the last 24 hours; keep a week so history survives
 // restarts without letting the event log grow without bound.
@@ -347,6 +347,10 @@ export function setSettings(settings: Settings, resetBreaks = true): void {
   }
 
   store.set({ settings });
+
+  if (!currentSettings.breaksEnabled && settings.breaksEnabled) {
+    resetTimeSinceLastBreak("Reset time since last break [enable]");
+  }
 
   if (resetBreaks) {
     initBreaks();

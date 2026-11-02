@@ -5,6 +5,7 @@ import {
   NotificationType,
   Settings,
   SoundType,
+  TrayTextMode,
 } from "../../types/settings";
 import { toast } from "../toaster";
 import BreaksCard from "./settings/breaks-card";
@@ -12,6 +13,7 @@ import CalendarCard from "./settings/calendar-card";
 import SettingsCard from "./settings/settings-card";
 import SettingsHeader from "./settings/settings-header";
 import StartupCard from "./settings/startup-card";
+import TrayCard from "./settings/tray-card";
 import WorkingHoursSettings from "./settings/working-hours";
 import WelcomeModal from "./welcome-modal";
 
@@ -121,6 +123,22 @@ export default function SettingsEl() {
     });
   };
 
+  const handleTrayTextModeChange = (value: string): void => {
+    if (value === "hidden") {
+      setSettingsDraft({
+        ...settingsDraft,
+        trayTextEnabled: false,
+      });
+      return;
+    }
+
+    setSettingsDraft({
+      ...settingsDraft,
+      trayTextEnabled: true,
+      trayTextMode: value as TrayTextMode,
+    });
+  };
+
   const handleSave = async () => {
     await ipcRenderer.invokeSetSettings(settingsDraft);
     toast("Settings saved");
@@ -174,6 +192,13 @@ export default function SettingsEl() {
                 settingsDraft={settingsDraft}
                 onSwitchChange={handleSwitchChange}
               />
+              {processPlatform === "darwin" && (
+                <TrayCard
+                  settingsDraft={settingsDraft}
+                  onSwitchChange={handleSwitchChange}
+                  onTrayTextModeChange={handleTrayTextModeChange}
+                />
+              )}
             </TabsContent>
           )}
         </div>

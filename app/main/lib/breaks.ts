@@ -36,7 +36,9 @@ function stripHtml(html: string): string {
     .trim();
 }
 
-let powerMonitor: PowerMonitor;
+type SystemIdleMonitor = Pick<PowerMonitor, "getSystemIdleState">;
+
+let powerMonitor: SystemIdleMonitor;
 let breakTimes: Record<string, BreakTime> = {};
 let havingBreak = false;
 let postponedCount = 0;
@@ -48,9 +50,8 @@ let startedFromTray = false;
 let activeBreak: ActiveBreak | null = null;
 let breakOutcomeRecorded = false;
 
-let lastCompletedBreakTime: Date = new Date();
+let lastCompletedBreakTime: Date | null = new Date();
 let currentBreakStartTime: Date | null = null;
-let hasSkippedOrSnoozedSinceLastBreak = false;
 
 export function getBreakTime(): BreakTime {
   return getNextBreakTime();
@@ -71,10 +72,12 @@ export function getBreakLengthSeconds(): number {
 }
 
 export function getTimeSinceLastBreak(): number | null {
-  if (!hasSkippedOrSnoozedSinceLastBreak) {
-    return null;
-  }
+  const now = moment();
+  const lastBreak = moment(lastCompletedBreakTime);
+  return now.diff(lastBreak, "seconds");
+}
 
+export function getTimeSinceLastCompletedBreak(): number | null {
   const now = moment();
   const lastBreak = moment(lastCompletedBreakTime);
   return now.diff(lastBreak, "seconds");
@@ -82,6 +85,17 @@ export function getTimeSinceLastBreak(): number | null {
 
 export function startBreakTracking(): void {
   currentBreakStartTime = new Date();
+}
+
+export function resetTimeSinceLastBreak(context: string): void {
+  lastCompletedBreakTime = new Date();
+  log.info(context);
+  buildTray();
+}
+
+function markBreakCompleted(context: string): void {
+  resetTimeSinceLastBreak(context);
+  currentBreakStartTime = null;
 }
 
 export function completeBreakTracking(breakDurationMs: number): void {
@@ -92,9 +106,7 @@ export function completeBreakTracking(breakDurationMs: number): void {
   const halfRequiredDuration = requiredDurationMs / 2;
 
   if (breakDurationMs >= halfRequiredDuration) {
-    lastCompletedBreakTime = new Date();
-    hasSkippedOrSnoozedSinceLastBreak = false;
-    log.info(
+    markBreakCompleted(
       `Break completed [duration=${Math.round(
         breakDurationMs / 1000,
       )}s] [required=${requiredSeconds}s]`,
@@ -298,9 +310,7 @@ export function scheduleNextBreak(
     idleScheduleId = null;
     postponedCount = 0;
 
-    lastCompletedBreakTime = new Date();
-    hasSkippedOrSnoozedSinceLastBreak = false;
-    log.info("Break auto-detected via idle reset");
+    resetTimeSinceLastBreak("Break auto-detected via idle reset");
   }
 
   const seconds = options.isPostpone
@@ -328,6 +338,11 @@ export function recordBreakOutcome(outcome: BreakOutcome): void {
 }
 
 export function endPopupBreak(): void {
+  if (currentBreakStartTime) {
+    const breakDurationMs = Date.now() - currentBreakStartTime.getTime();
+    completeBreakTracking(breakDurationMs);
+  }
+
   log.info("Break ended");
   const now = moment();
   havingBreak = false;
@@ -366,8 +381,6 @@ export function postponeBreak(action = "snoozed"): void {
 
   postponedCount++;
   havingBreak = false;
-  hasSkippedOrSnoozedSinceLastBreak = true;
-
   const eventType: BreakEventType =
     action === "skipped" ? "cancelled" : "snoozed";
   recordBreakEvent(
@@ -393,7 +406,6 @@ export function postponeBreak(action = "snoozed"): void {
 function doBreak(scheduleId: string): void {
   havingBreak = true;
   breakOutcomeRecorded = false;
-  startBreakTracking();
 
   const settings: Settings = getSettings();
   const schedule = getScheduleById(settings, scheduleId);
@@ -415,6 +427,14 @@ function doBreak(scheduleId: string): void {
     `Break started [type=${schedule.notificationType}] [scheduleId=${schedule.id}]`,
   );
 
+  if (
+    schedule.notificationType === NotificationType.Notification ||
+    schedule.immediatelyStartBreaks ||
+    startedFromTray
+  ) {
+    startBreakTracking();
+  }
+
   if (schedule.notificationType === NotificationType.Notification) {
     showNotification(schedule.title, stripHtml(schedule.message));
     if (schedule.soundType !== SoundType.None) {
@@ -424,6 +444,7 @@ function doBreak(scheduleId: string): void {
         schedule.breakSoundVolume,
       );
     }
+    markBreakCompleted("Break completed [type=notification]");
     havingBreak = false;
     activeBreak = null;
     scheduleNextBreak(schedule.id);
@@ -439,14 +460,14 @@ function doBreak(scheduleId: string): void {
   buildTray();
 }
 
-export function checkInWorkingHours(): boolean {
-  const settings: Settings = getSettings();
-
+function checkInWorkingHoursAt(
+  now: moment.Moment,
+  settings: Settings,
+): boolean {
   if (!settings.workingHoursEnabled) {
     return true;
   }
 
-  const now = moment();
   const currentMinutes = now.hours() * 60 + now.minutes();
   const dayOfWeek = now.day();
 
@@ -470,6 +491,10 @@ export function checkInWorkingHours(): boolean {
     (range) =>
       currentMinutes >= range.fromMinutes && currentMinutes <= range.toMinutes,
   );
+}
+
+export function checkInWorkingHours(): boolean {
+  return checkInWorkingHoursAt(moment(), getSettings());
 }
 
 enum IdleState {
@@ -568,6 +593,17 @@ export function wasStartedFromTray(): boolean {
 
 function tick(): void {
   try {
+    const settings = getSettings();
+    const now = moment();
+    const inWorkingHours = checkInWorkingHoursAt(now, settings);
+    const wasInWorkingHours = lastTick
+      ? checkInWorkingHoursAt(moment(lastTick), settings)
+      : inWorkingHours;
+
+    if (!wasInWorkingHours && inWorkingHours) {
+      resetTimeSinceLastBreak("Reset time since last break [working-hours]");
+    }
+
     const shouldHaveBreak = checkShouldHaveBreak();
 
     // This can happen if the computer is put to sleep. In this case, we want
@@ -579,14 +615,7 @@ function tick(): void {
     const breakSeconds = getBreakSeconds();
     const lockSeconds = lockStart && Math.abs(+new Date() - +lockStart) / 1000;
 
-    if (lockStart && lockSeconds !== null && lockSeconds > breakSeconds) {
-      // The computer has been locked for longer than the break period. In this
-      // case, it's not particularly helpful to show an idle reset
-      // notification, so unset idle start
-      idleStart = null;
-      idleScheduleId = null;
-      lockStart = null;
-    } else if (secondsSinceLastTick > breakSeconds) {
+    if (secondsSinceLastTick > breakSeconds) {
       // The computer has been slept for longer than the break period. In this
       // case, it's not particularly helpful to show an idle reset
       // notification, so just reset the schedules that opt into idle resets.
@@ -594,6 +623,18 @@ function tick(): void {
       // original time and can still fire when they come due.
       lockStart = null;
       clearIdleResetSchedules();
+      resetTimeSinceLastBreak("Break auto-detected via system suspension");
+    } else if (
+      lockStart &&
+      lockSeconds !== null &&
+      lockSeconds > breakSeconds
+    ) {
+      // The computer has been locked for longer than the break period. In this
+      // case, it's not particularly helpful to show an idle reset
+      // notification, so unset idle start
+      idleStart = null;
+      idleScheduleId = null;
+      lockStart = null;
     } else if (secondsSinceLastTick > getIdleResetSeconds()) {
       //  If idleStart exists, it means we were idle before the computer slept.
       //  If it doesn't exist, count the computer going unresponsive as the
@@ -637,8 +678,8 @@ function tick(): void {
 
 let tickInterval: NodeJS.Timeout;
 
-export function initBreaks(): void {
-  powerMonitor = require("electron").powerMonitor;
+export function initBreaks(systemIdleMonitor?: SystemIdleMonitor): void {
+  powerMonitor = systemIdleMonitor ?? require("electron").powerMonitor;
 
   const settings: Settings = getSettings();
 

@@ -3,12 +3,13 @@ import log from "electron-log";
 import moment from "moment";
 import path from "path";
 import packageJson from "../../../package.json";
-import { Settings } from "../../types/settings";
+import { Settings, TrayTextMode } from "../../types/settings";
 import {
   checkIdle,
   checkInWorkingHours,
   getAllBreakTimes,
   getBreakTime,
+  getTimeSinceLastCompletedBreak,
   isHavingBreak,
   startBreakNow,
 } from "./breaks";
@@ -77,6 +78,49 @@ function getDisableTimeRemaining(): string {
   }
 }
 
+function formatCompactDuration(seconds: number): string {
+  if (seconds < 60) {
+    return "<1m";
+  }
+
+  const totalMinutes = Math.floor(seconds / 60);
+  const hours = Math.floor(totalMinutes / 60);
+  const minutes = totalMinutes % 60;
+
+  if (hours > 0) {
+    return minutes > 0 ? `${hours}h${minutes}m` : `${hours}h`;
+  }
+
+  return `${totalMinutes}m`;
+}
+
+function getTrayTitle(): string | null {
+  const settings = getSettings();
+
+  if (!settings.trayTextEnabled) return null;
+  if (!settings.breaksEnabled) return null;
+  if (!checkInWorkingHours()) return null;
+  if (isHavingBreak()) return null;
+
+  switch (settings.trayTextMode) {
+    case TrayTextMode.TimeToNextBreak: {
+      const breakTime = getBreakTime();
+
+      if (breakTime === null) return null;
+
+      const secondsLeft = Math.max(breakTime.diff(moment(), "seconds"), 0);
+      return ` ${formatCompactDuration(secondsLeft)}`;
+    }
+    case TrayTextMode.TimeSinceLastBreak: {
+      const secondsSinceLastBreak = getTimeSinceLastCompletedBreak();
+      if (secondsSinceLastBreak === null) return null;
+      return ` ${formatCompactDuration(secondsSinceLastBreak)}`;
+    }
+    default:
+      return null;
+  }
+}
+
 export function buildTray(): void {
   if (!tray) {
     let imgPath;
@@ -103,8 +147,13 @@ export function buildTray(): void {
     }
   }
 
-  let settings: Settings = getSettings();
+  let settings = getSettings();
   const breaksEnabled = settings.breaksEnabled;
+
+  if (process.platform === "darwin") {
+    const trayTitle = getTrayTitle();
+    tray.setTitle(trayTitle ?? "", { fontType: "monospacedDigit" });
+  }
 
   const setBreaksEnabled = (breaksEnabled: boolean): void => {
     if (breaksEnabled) {
@@ -156,7 +205,6 @@ export function buildTray(): void {
     });
   };
 
-  const breakTime = getBreakTime();
   const enabledSchedules = settings.breakSchedules.filter(
     (schedule) => schedule.enabled,
   );
@@ -266,8 +314,7 @@ export function buildTray(): void {
       // A break is already on screen; keep the item present for menu parity but
       // do not let it spawn a second set of break windows.
       enabled: !havingBreak,
-      visible:
-        breakTime !== null && inWorkingHours && enabledSchedules.length > 0,
+      visible: enabledSchedules.length > 0,
       submenu: enabledSchedules.map((schedule) => ({
         label: getScheduleLabel(enabledSchedules, schedule.id),
         click: () => {
@@ -290,6 +337,7 @@ export function initTray(): void {
   buildTray();
   let lastDisableText = getDisableTimeRemaining();
   let lastMeetingEnd: number | null = null;
+  let lastTrayTitle = getTrayTitle();
 
   setInterval(() => {
     checkDisableTimeout();
@@ -304,6 +352,14 @@ export function initTray(): void {
     if (meetingEnd !== lastMeetingEnd) {
       buildTray();
       lastMeetingEnd = meetingEnd;
+    }
+
+    if (process.platform === "darwin") {
+      const currentTrayTitle = getTrayTitle();
+      if (currentTrayTitle !== lastTrayTitle) {
+        buildTray();
+        lastTrayTitle = currentTrayTitle;
+      }
     }
 
     const breakTime = getBreakTime();
