@@ -2,6 +2,7 @@ import { Button } from "@/components/ui/button";
 import { motion } from "framer-motion";
 import moment from "moment";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { BreakOutcome } from "../../../types/breaks";
 import { SoundType } from "../../../types/settings";
 import { TimeRemaining } from "./utils";
 
@@ -10,7 +11,7 @@ interface BreakProgressProps {
   breakTitle: string;
   breakLengthSeconds: number;
   endBreakEnabled: boolean;
-  onEndBreak: () => void;
+  onEndBreak: (outcome: BreakOutcome) => void;
   soundType: SoundType;
   breakSoundVolume: number;
   textColor: string;
@@ -81,7 +82,7 @@ export function BreakProgress({
             new Date().getTime() - breakStartTime.getTime();
           ipcRenderer.invokeCompleteBreakTracking(breakDurationMs);
 
-          onEndBreak();
+          onEndBreak("completed");
           return;
         }
 
@@ -144,7 +145,9 @@ export function BreakProgress({
         {endBreakEnabled && (
           <Button
             className="!bg-transparent hover:!bg-black/10 active:!bg-black/20 border-white/20"
-            onClick={onEndBreak}
+            onClick={() =>
+              onEndBreak(progress < 0.5 ? "cancelled" : "completed")
+            }
             variant="outline"
             style={{
               color: textColor,

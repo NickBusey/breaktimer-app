@@ -1,7 +1,12 @@
 import { PowerMonitor } from "electron";
 import log from "electron-log";
 import moment from "moment";
-import { ActiveBreak, BreakTime } from "../../types/breaks";
+import {
+  ActiveBreak,
+  BreakEventType,
+  BreakOutcome,
+  BreakTime,
+} from "../../types/breaks";
 import { IpcChannel } from "../../types/ipc";
 import {
   BreakSchedule,
@@ -11,9 +16,14 @@ import {
   Settings,
   SoundType,
 } from "../../types/settings";
+import {
+  isCalendarMeetingActive,
+  setCalendarExcludedIds,
+  setCalendarPauseEnabled,
+} from "./calendar";
 import { sendIpc } from "./ipc";
 import { showNotification } from "./notifications";
-import { getSettings } from "./store";
+import { getSettings, recordBreakEvent } from "./store";
 import { buildTray } from "./tray";
 import { createBreakWindows } from "./windows";
 
@@ -36,7 +46,7 @@ let lockStart: Date | null = null;
 let lastTick: Date | null = null;
 let startedFromTray = false;
 let activeBreak: ActiveBreak | null = null;
-let breakEndedByPostpone = false;
+let breakOutcomeRecorded = false;
 
 let lastCompletedBreakTime: Date = new Date();
 let currentBreakStartTime: Date | null = null;
@@ -172,26 +182,22 @@ function scheduleAllNextBreaks(fromTime?: moment.Moment): void {
   }
 }
 
-function resetOtherSchedulesFrom(
-  fromTime: moment.Moment,
-  activeScheduleId: string,
-): void {
-  const settings: Settings = getSettings();
-  const schedules = getEnabledSchedules(settings).filter(
-    (schedule) => schedule.id !== activeScheduleId,
-  );
-
-  for (const schedule of schedules) {
-    scheduleNextBreak(schedule.id, { fromTime });
-  }
-}
-
 function hasScheduledBreaks(): boolean {
   return Object.values(breakTimes).some((time) => time !== null);
 }
 
 function clearScheduledBreaks(): void {
   breakTimes = {};
+}
+
+function clearIdleResetSchedules(): void {
+  const settings: Settings = getSettings();
+
+  for (const schedule of getEnabledSchedules(settings)) {
+    if (schedule.idleResetEnabled) {
+      breakTimes[schedule.id] = null;
+    }
+  }
 }
 
 function ensureScheduledBreaks(): void {
@@ -311,12 +317,21 @@ export function scheduleNextBreak(
   buildTray();
 }
 
+export function recordBreakOutcome(outcome: BreakOutcome): void {
+  if (breakOutcomeRecorded || !activeBreak) {
+    return;
+  }
+
+  recordBreakEvent(activeBreak.scheduleId, outcome, activeBreak.lengthSeconds);
+  breakOutcomeRecorded = true;
+  postponedCount = 0;
+}
+
 export function endPopupBreak(): void {
   log.info("Break ended");
   const now = moment();
   havingBreak = false;
   startedFromTray = false;
-  const shouldResetOtherSchedules = !breakEndedByPostpone;
 
   const activeScheduleId = activeBreak?.scheduleId ?? null;
   if (activeScheduleId) {
@@ -329,14 +344,8 @@ export function endPopupBreak(): void {
       scheduleNextBreak(activeScheduleId);
     }
     // If there's already a future break scheduled (from snooze/skip), keep it
-    if (shouldResetOtherSchedules) {
-      resetOtherSchedulesFrom(now, activeScheduleId);
-    }
-  } else if (shouldResetOtherSchedules) {
-    scheduleAllNextBreaks(now);
   }
 
-  breakEndedByPostpone = false;
   activeBreak = null;
 
   buildTray();
@@ -358,6 +367,16 @@ export function postponeBreak(action = "snoozed"): void {
   postponedCount++;
   havingBreak = false;
   hasSkippedOrSnoozedSinceLastBreak = true;
+
+  const eventType: BreakEventType =
+    action === "skipped" ? "cancelled" : "snoozed";
+  recordBreakEvent(
+    activeBreak.scheduleId,
+    eventType,
+    activeBreak.lengthSeconds,
+  );
+  breakOutcomeRecorded = true;
+
   log.info(
     `Break ${action} [count=${postponedCount}] [scheduleId=${activeBreak.scheduleId}]`,
   );
@@ -369,13 +388,11 @@ export function postponeBreak(action = "snoozed"): void {
     log.info("Creating break with postpone length");
     scheduleNextBreak(activeBreak.scheduleId, { isPostpone: true });
   }
-
-  resetOtherSchedulesFrom(moment(), activeBreak.scheduleId);
-  breakEndedByPostpone = true;
 }
 
 function doBreak(scheduleId: string): void {
   havingBreak = true;
+  breakOutcomeRecorded = false;
   startBreakTracking();
 
   const settings: Settings = getSettings();
@@ -413,6 +430,9 @@ function doBreak(scheduleId: string): void {
   }
 
   if (schedule.notificationType === NotificationType.Popup) {
+    // Schedule the next occurrence now so the tray keeps showing an accurate
+    // countdown while this break is on screen.
+    scheduleNextBreak(schedule.id);
     createBreakWindows();
   }
 
@@ -481,6 +501,10 @@ export function checkIdle(): boolean {
 
   lockStart = null;
 
+  if (getSettings().pauseDuringMeetings && isCalendarMeetingActive()) {
+    return false;
+  }
+
   if (!relevant?.idleResetEnabled) {
     return false;
   }
@@ -512,11 +536,19 @@ function checkBreak(): void {
   const nextBreak = getNextBreakInfo();
 
   if (nextBreak && now > nextBreak.time) {
+    if (getSettings().pauseDuringMeetings && isCalendarMeetingActive()) {
+      return;
+    }
     doBreak(nextBreak.schedule.id);
   }
 }
 
 export function startBreakNow(scheduleId?: string): void {
+  if (havingBreak) {
+    log.info("Ignoring start break; a break is already in progress");
+    return;
+  }
+
   const settings: Settings = getSettings();
   const nextScheduleId = scheduleId ?? getNextBreakInfo()?.schedule.id;
   const fallbackScheduleId =
@@ -557,9 +589,11 @@ function tick(): void {
     } else if (secondsSinceLastTick > breakSeconds) {
       // The computer has been slept for longer than the break period. In this
       // case, it's not particularly helpful to show an idle reset
-      // notification, so just reset the break
+      // notification, so just reset the schedules that opt into idle resets.
+      // Timers with idle reset disabled (for example a long break) keep their
+      // original time and can still fire when they come due.
       lockStart = null;
-      clearScheduledBreaks();
+      clearIdleResetSchedules();
     } else if (secondsSinceLastTick > getIdleResetSeconds()) {
       //  If idleStart exists, it means we were idle before the computer slept.
       //  If it doesn't exist, count the computer going unresponsive as the
@@ -569,19 +603,26 @@ function tick(): void {
         idleStart = lastTick;
       }
       idleScheduleId ??= getRelevantSchedule()?.id ?? null;
-      scheduleAllNextBreaks();
+      clearIdleResetSchedules();
     }
 
     if (!shouldHaveBreak && !havingBreak && hasScheduledBreaks()) {
-      if (checkIdle()) {
-        const relevant = getRelevantSchedule();
-        const idleResetSeconds = getIdleResetSeconds(relevant);
-        idleScheduleId = relevant?.id ?? null;
-        // Calculate when idle actually started by subtracting idle duration
-        idleStart = new Date(Date.now() - idleResetSeconds * 1000);
+      // Only apply the idle reset once per idle period. Schedules without
+      // idle reset enabled keep their original times so unrelated timers
+      // (for example a long break) are not reset by a short break timer.
+      if (!idleStart) {
+        if (checkIdle()) {
+          const relevant = getRelevantSchedule();
+          const idleResetSeconds = getIdleResetSeconds(relevant);
+          idleScheduleId = relevant?.id ?? null;
+          // Calculate when idle actually started by subtracting idle duration
+          idleStart = new Date(Date.now() - idleResetSeconds * 1000);
+          clearIdleResetSchedules();
+        } else {
+          clearScheduledBreaks();
+        }
+        buildTray();
       }
-      clearScheduledBreaks();
-      buildTray();
       return;
     }
 
@@ -600,6 +641,11 @@ export function initBreaks(): void {
   powerMonitor = require("electron").powerMonitor;
 
   const settings: Settings = getSettings();
+
+  setCalendarExcludedIds(settings.excludedCalendarIds);
+  setCalendarPauseEnabled(
+    settings.breaksEnabled && settings.pauseDuringMeetings,
+  );
 
   if (settings.breaksEnabled) {
     clearScheduledBreaks();

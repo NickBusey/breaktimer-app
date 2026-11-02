@@ -59,6 +59,8 @@ export interface Settings {
   breaksEnabled: boolean;
   notificationType: NotificationType;
   breakSchedules: BreakSchedule[];
+  pauseDuringMeetings: boolean;
+  excludedCalendarIds: string[];
   workingHoursEnabled: boolean;
   workingHoursMonday: WorkingHours;
   workingHoursTuesday: WorkingHours;
@@ -78,6 +80,8 @@ export const defaultSettings: Settings = {
   autoLaunch: true,
   breaksEnabled: true,
   notificationType: NotificationType.Popup,
+  pauseDuringMeetings: true,
+  excludedCalendarIds: [],
   breakSchedules: [
     {
       id: "default",

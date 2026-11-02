@@ -57,8 +57,17 @@ process.once("loaded", () => {
     invokeBreakStart: () => {
       return ipcRenderer.invoke("BREAK_START");
     },
-    invokeBreakEnd: () => {
-      return ipcRenderer.invoke("BREAK_END");
+    invokeBreakEnd: (outcome) => {
+      return ipcRenderer.invoke("BREAK_END", outcome);
+    },
+    invokeGetBreakEvents: (scheduleId, since) => {
+      return ipcRenderer.invoke("BREAK_EVENTS_GET", scheduleId, since);
+    },
+    invokeGetCalendarMeetings: (since) => {
+      return ipcRenderer.invoke("CALENDAR_MEETINGS_GET", since);
+    },
+    invokeGetCalendars: (requestAccess = false) => {
+      return ipcRenderer.invoke("CALENDAR_CALENDARS_GET", requestAccess);
     },
     onPlayStartSound: (cb) => {
       ipcRenderer.on("SOUND_START_PLAY", (_event, type, volume = 1) => {

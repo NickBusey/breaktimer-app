@@ -1,6 +1,6 @@
 import { motion } from "framer-motion";
 import { useCallback, useEffect, useState } from "react";
-import { ActiveBreak } from "../../types/breaks";
+import { ActiveBreak, BreakOutcome } from "../../types/breaks";
 import { NotificationType, Settings, SoundType } from "../../types/settings";
 import { BreakNotification } from "./break/break-notification";
 import { BreakProgress } from "./break/break-progress";
@@ -108,39 +108,42 @@ export default function Break() {
     setClosing(true);
   }, []);
 
-  const handleEndBreak = useCallback(async () => {
-    // Only play end sound from primary window
-    const urlParams = new URLSearchParams(window.location.search);
-    const windowId = urlParams.get("windowId");
-    const isPrimary = windowId === "0" || windowId === null;
+  const handleEndBreak = useCallback(
+    async (outcome: BreakOutcome) => {
+      // Only play end sound from primary window
+      const urlParams = new URLSearchParams(window.location.search);
+      const windowId = urlParams.get("windowId");
+      const isPrimary = windowId === "0" || windowId === null;
 
-    const schedule =
-      settings && activeBreak
-        ? settings.breakSchedules.find((s) => s.id === activeBreak.scheduleId)
-        : undefined;
-    const breakSchedule =
-      schedule ??
-      (settings
-        ? (settings.breakSchedules.find(
-            (s) => s.notificationType === NotificationType.Popup,
-          ) ?? settings.breakSchedules[0])
-        : undefined);
+      const schedule =
+        settings && activeBreak
+          ? settings.breakSchedules.find((s) => s.id === activeBreak.scheduleId)
+          : undefined;
+      const breakSchedule =
+        schedule ??
+        (settings
+          ? (settings.breakSchedules.find(
+              (s) => s.notificationType === NotificationType.Popup,
+            ) ?? settings.breakSchedules[0])
+          : undefined);
 
-    if (
-      isPrimary &&
-      settings &&
-      breakSchedule &&
-      breakSchedule.soundType !== SoundType.None
-    ) {
-      ipcRenderer.invokeEndSound(
-        breakSchedule.soundType,
-        breakSchedule.breakSoundVolume,
-      );
-    }
+      if (
+        isPrimary &&
+        settings &&
+        breakSchedule &&
+        breakSchedule.soundType !== SoundType.None
+      ) {
+        ipcRenderer.invokeEndSound(
+          breakSchedule.soundType,
+          breakSchedule.breakSoundVolume,
+        );
+      }
 
-    // Broadcast to all windows to start their closing animations
-    await ipcRenderer.invokeBreakEnd();
-  }, [settings, activeBreak]);
+      // Broadcast to all windows to start their closing animations
+      await ipcRenderer.invokeBreakEnd(outcome);
+    },
+    [settings, activeBreak],
+  );
 
   if (settings === null || allowPostpone === null) {
     return null;
@@ -155,6 +158,10 @@ export default function Break() {
       (s) => s.notificationType === NotificationType.Popup,
     ) ??
     settings.breakSchedules[0];
+  const maxBreakLengthSeconds = Math.max(
+    ...settings.breakSchedules.map((schedule) => schedule.lengthSeconds),
+    1,
+  );
 
   if (countingDown) {
     return (
@@ -164,6 +171,7 @@ export default function Break() {
       >
         {ready && !closing && (
           <BreakNotification
+            schedules={settings.breakSchedules}
             onCountdownOver={handleCountdownOver}
             onPostponeBreak={handlePostponeBreak}
             onSkipBreak={handleSkipBreak}
@@ -180,6 +188,7 @@ export default function Break() {
             timeSinceLastBreak={timeSinceLastBreak}
             breakTitle={scheduleForBreak.title}
             breakLengthSeconds={scheduleForBreak.lengthSeconds}
+            maxBreakLengthSeconds={maxBreakLengthSeconds}
             textColor={scheduleForBreak.textColor}
             backgroundColor={scheduleForBreak.backgroundColor}
           />

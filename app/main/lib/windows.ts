@@ -100,20 +100,28 @@ export function createBreakWindows(): void {
   if (schedule?.skipBreakEnabled && !schedule.immediatelyStartBreaks)
     buttonCount++;
 
-  const notificationWidth =
-    450 + (buttonCount - 1) * 50 + (buttonCount === 3 ? 20 : 0);
+  const notificationWidth = Math.round(
+    (450 + (buttonCount - 1) * 50 + (buttonCount === 3 ? 20 : 0)) * 1.5,
+  );
 
   const displays = screen.getAllDisplays();
   for (let windowIndex = 0; windowIndex < displays.length; windowIndex++) {
     const display = displays[windowIndex];
-    const notificationHeight = 96;
+    const notificationHeight = 140;
+    const displayNotificationWidth = Math.min(
+      notificationWidth,
+      display.bounds.width - 40,
+    );
     const breakWindow = new BrowserWindow({
       show: false,
       autoHideMenuBar: true,
       frame: false,
-      x: display.bounds.x + display.bounds.width / 2 - notificationWidth / 2,
+      x:
+        display.bounds.x +
+        display.bounds.width / 2 -
+        displayNotificationWidth / 2,
       y: display.bounds.y + 50,
-      width: notificationWidth,
+      width: displayNotificationWidth,
       height: notificationHeight,
       resizable: false,
       focusable: false,

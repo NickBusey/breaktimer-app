@@ -70,7 +70,9 @@
       "entitlementsInherit": "./internals/build/entitlements.mac.plist",
       "extendInfo": {
         "LSUIElement": 1,
-        "CFBundleIconName": "AppIcon"
+        "CFBundleIconName": "AppIcon",
+        "NSCalendarsUsageDescription": "BreakTimer checks your calendar to pause breaks while you are in a meeting.",
+        "NSCalendarsFullAccessUsageDescription": "BreakTimer checks your calendar to pause breaks while you are in a meeting."
       },
       "gatekeeperAssess": false,
       "hardenedRuntime": true,

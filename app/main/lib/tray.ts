@@ -12,6 +12,7 @@ import {
   isHavingBreak,
   startBreakNow,
 } from "./breaks";
+import { getActiveCalendarMeeting } from "./calendar";
 import {
   getDisableEndTime,
   getSettings,
@@ -162,6 +163,9 @@ export function buildTray(): void {
   const inWorkingHours = checkInWorkingHours();
   const idle = checkIdle();
   const havingBreak = isHavingBreak();
+  const meeting = settings.pauseDuringMeetings
+    ? getActiveCalendarMeeting()
+    : null;
 
   const allBreakTimes = getAllBreakTimes().sort(
     (a, b) => a.time.valueOf() - b.time.valueOf(),
@@ -178,14 +182,24 @@ export function buildTray(): void {
     }
   };
 
-  const showTimerItems = breaksEnabled && inWorkingHours && !havingBreak;
+  const showTimerItems = breaksEnabled && inWorkingHours;
 
   const timerItems = allBreakTimes.map(({ schedule, time }) => {
     const scheduleLabel = getScheduleLabel(enabledSchedules, schedule.id);
     return {
-      label: `"${scheduleLabel}" ${formatMinsLeft(time)}`,
-      enabled: false,
+      label:
+        enabledSchedules.length > 1
+          ? `Start break now ("${scheduleLabel}")`
+          : "Start break now",
+      sublabel: `"${scheduleLabel}" ${formatMinsLeft(time)}`,
+      enabled: !havingBreak,
       visible: showTimerItems,
+      click: () => {
+        log.info(
+          `Start break now selected from next break [scheduleId=${schedule.id}]`,
+        );
+        startBreakNow(schedule.id);
+      },
     };
   });
 
@@ -201,6 +215,13 @@ export function buildTray(): void {
     {
       label: `Outside of working hours`,
       visible: !inWorkingHours,
+      enabled: false,
+    },
+    {
+      label: meeting
+        ? `In meeting until ${moment(meeting.end).format("LT")}`
+        : "In meeting",
+      visible: meeting !== null,
       enabled: false,
     },
     {
@@ -242,11 +263,11 @@ export function buildTray(): void {
     },
     {
       label: "Start break now",
+      // A break is already on screen; keep the item present for menu parity but
+      // do not let it spawn a second set of break windows.
+      enabled: !havingBreak,
       visible:
-        breakTime !== null &&
-        inWorkingHours &&
-        !havingBreak &&
-        enabledSchedules.length > 0,
+        breakTime !== null && inWorkingHours && enabledSchedules.length > 0,
       submenu: enabledSchedules.map((schedule) => ({
         label: getScheduleLabel(enabledSchedules, schedule.id),
         click: () => {
@@ -268,6 +289,7 @@ export function buildTray(): void {
 export function initTray(): void {
   buildTray();
   let lastDisableText = getDisableTimeRemaining();
+  let lastMeetingEnd: number | null = null;
 
   setInterval(() => {
     checkDisableTimeout();
@@ -276,6 +298,12 @@ export function initTray(): void {
     if (currentDisableText !== lastDisableText) {
       buildTray();
       lastDisableText = currentDisableText;
+    }
+
+    const meetingEnd = getActiveCalendarMeeting()?.end ?? null;
+    if (meetingEnd !== lastMeetingEnd) {
+      buildTray();
+      lastMeetingEnd = meetingEnd;
     }
 
     const breakTime = getBreakTime();

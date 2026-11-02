@@ -1,7 +1,12 @@
 import Store from "electron-store";
+import { BreakEvent, BreakEventType } from "../../types/breaks";
 import { defaultSettings, Settings } from "../../types/settings";
 import { setAutoLauch } from "./auto-launch";
 import { initBreaks } from "./breaks";
+
+// The popup sparkline reads the last 24 hours; keep a week so history survives
+// restarts without letting the event log grow without bound.
+const BREAK_EVENT_RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
 
 interface Migration {
   version: number;
@@ -266,6 +271,15 @@ const migrations: Migration[] = [
       return settings;
     },
   },
+  {
+    version: 7,
+    migrate: (settings: Record<string, unknown>) => {
+      if (!Array.isArray(settings.excludedCalendarIds)) {
+        settings.excludedCalendarIds = [];
+      }
+      return settings;
+    },
+  },
 ];
 
 const store = new Store({
@@ -274,6 +288,7 @@ const store = new Store({
     appInitialized: false,
     settingsVersion: 0,
     disableEndTime: null,
+    breakEvents: {},
   },
 });
 
@@ -357,4 +372,49 @@ export function setDisableEndTime(endTime: number | null): void {
 
 export function getDisableEndTime(): number | null {
   return store.get("disableEndTime");
+}
+
+export function recordBreakEvent(
+  scheduleId: string,
+  type: BreakEventType,
+  lengthSeconds?: number,
+): void {
+  try {
+    const allEvents =
+      (store.get("breakEvents") as Record<string, BreakEvent[]> | undefined) ??
+      {};
+    const cutoff = Date.now() - BREAK_EVENT_RETENTION_MS;
+    const prunedEvents: Record<string, BreakEvent[]> = {};
+
+    for (const [id, events] of Object.entries(allEvents)) {
+      const retained = events.filter((event) => event.timestamp >= cutoff);
+      if (retained.length > 0) {
+        prunedEvents[id] = retained;
+      }
+    }
+
+    prunedEvents[scheduleId] = [
+      ...(prunedEvents[scheduleId] ?? []),
+      { type, timestamp: Date.now(), lengthSeconds },
+    ];
+
+    store.set("breakEvents", prunedEvents);
+  } catch (error) {
+    // History is supplementary; never let a failed write block break controls.
+    console.error("Failed to record break event", error);
+  }
+}
+
+export function getBreakEvents(
+  scheduleId: string,
+  since?: number,
+): BreakEvent[] {
+  const allEvents =
+    (store.get("breakEvents") as Record<string, BreakEvent[]> | undefined) ??
+    {};
+  const events = allEvents[scheduleId] ?? [];
+
+  return since === undefined
+    ? events
+    : events.filter((event) => event.timestamp >= since);
 }

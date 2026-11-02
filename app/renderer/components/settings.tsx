@@ -8,6 +8,7 @@ import {
 } from "../../types/settings";
 import { toast } from "../toaster";
 import BreaksCard from "./settings/breaks-card";
+import CalendarCard from "./settings/calendar-card";
 import SettingsCard from "./settings/settings-card";
 import SettingsHeader from "./settings/settings-header";
 import StartupCard from "./settings/startup-card";
@@ -43,6 +44,15 @@ export default function SettingsEl() {
     setSettingsDraft({
       ...settingsDraft,
       [field]: checked,
+    });
+  };
+
+  const handleExcludedCalendarsChange = (
+    excludedCalendarIds: string[],
+  ): void => {
+    setSettingsDraft({
+      ...settingsDraft,
+      excludedCalendarIds,
     });
   };
 
@@ -132,6 +142,11 @@ export default function SettingsEl() {
               onScheduleAdd={handleScheduleAdd}
               onScheduleRemove={handleScheduleRemove}
               onSwitchChange={handleSwitchChange}
+            />
+            <CalendarCard
+              settingsDraft={settingsDraft}
+              onSwitchChange={handleSwitchChange}
+              onExcludedCalendarsChange={handleExcludedCalendarsChange}
             />
           </TabsContent>
 

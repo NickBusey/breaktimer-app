@@ -1,5 +1,7 @@
 import { BrowserWindow, ipcMain, IpcMainInvokeEvent, screen } from "electron";
 import log from "electron-log";
+import { BreakEvent, BreakOutcome } from "../../types/breaks";
+import { CalendarInfo, CalendarMeeting } from "../../types/calendar";
 import { IpcChannel } from "../../types/ipc";
 import { Settings, SoundType } from "../../types/settings";
 import {
@@ -9,9 +11,12 @@ import {
   getBreakLengthSeconds,
   getTimeSinceLastBreak,
   postponeBreak,
+  recordBreakOutcome,
   wasStartedFromTray,
 } from "./breaks";
+import { getCalendarList, getRecentCalendarMeetings } from "./calendar";
 import {
+  getBreakEvents,
   getSettings,
   setSettings,
   getAppInitialized,
@@ -62,10 +67,52 @@ ipcMain.handle(IpcChannel.BreakStart, (): void => {
   });
 });
 
-ipcMain.handle(IpcChannel.BreakEnd, (): void => {
-  log.info(IpcChannel.BreakEnd);
-  sendIpc(IpcChannel.BreakEnd);
-});
+ipcMain.handle(
+  IpcChannel.BreakEnd,
+  (_event: IpcMainInvokeEvent, outcome?: BreakOutcome): void => {
+    log.info(IpcChannel.BreakEnd, outcome);
+
+    if (outcome === "completed" || outcome === "cancelled") {
+      recordBreakOutcome(outcome);
+    }
+
+    sendIpc(IpcChannel.BreakEnd);
+  },
+);
+
+ipcMain.handle(
+  IpcChannel.BreakEventsGet,
+  (
+    _event: IpcMainInvokeEvent,
+    scheduleId: string,
+    since?: number,
+  ): BreakEvent[] => {
+    log.info(IpcChannel.BreakEventsGet, scheduleId, since);
+    return getBreakEvents(scheduleId, since);
+  },
+);
+
+ipcMain.handle(
+  IpcChannel.CalendarCalendarsGet,
+  (
+    _event: IpcMainInvokeEvent,
+    requestAccess = false,
+  ): Promise<CalendarInfo[]> => {
+    log.info(IpcChannel.CalendarCalendarsGet, requestAccess);
+    return getCalendarList(requestAccess);
+  },
+);
+
+ipcMain.handle(
+  IpcChannel.CalendarMeetingsGet,
+  (_event: IpcMainInvokeEvent, since?: number): CalendarMeeting[] => {
+    log.info(IpcChannel.CalendarMeetingsGet, since);
+    const meetings = getRecentCalendarMeetings();
+    return since === undefined
+      ? meetings
+      : meetings.filter((meeting) => meeting.end >= since);
+  },
+);
 
 ipcMain.handle(
   IpcChannel.SoundStartPlay,

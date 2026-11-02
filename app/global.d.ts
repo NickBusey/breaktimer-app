@@ -13,7 +13,13 @@ declare const ipcRenderer: {
   invokeGetAppInitialized: () => Promise<boolean>;
   invokeSetAppInitialized: () => Promise<void>;
   invokeBreakStart: () => Promise<void>;
-  invokeBreakEnd: () => Promise<void>;
+  invokeBreakEnd: (outcome: "completed" | "cancelled") => Promise<void>;
+  invokeGetBreakEvents: (
+    scheduleId: string,
+    since?: number,
+  ) => Promise<unknown>;
+  invokeGetCalendarMeetings: (since?: number) => Promise<unknown>;
+  invokeGetCalendars: (requestAccess?: boolean) => Promise<unknown>;
   onPlayEndSound: (
     cb: (type: string, volume?: number) => void,
   ) => Promise<void>;
